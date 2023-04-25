@@ -86,6 +86,9 @@ func (s *Logger) SetCallDepth(callDepth int) {
 func (s *Logger) SetFlags(flags int) *Logger {
 	mutex.Lock()
 	defer mutex.Unlock()
+	if flags <= 0 {
+		flags = defaultLogFlags
+	}
 	s.debug.SetFlags(flags)
 	s.info.SetFlags(flags)
 	s.warn.SetFlags(flags)
