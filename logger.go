@@ -77,15 +77,12 @@ func (s *Logger) Close() {
 	}
 }
 
-func (s *Logger) SetCallDepth(callDepth int) {
-	mutex.Lock()
-	defer mutex.Unlock()
+func (s *Logger) CallDepth(callDepth int) *Logger {
 	s.callDepth = callDepth
+	return s
 }
 
-func (s *Logger) SetFlags(flags int) *Logger {
-	mutex.Lock()
-	defer mutex.Unlock()
+func (s *Logger) Flags(flags int) *Logger {
 	if flags <= 0 {
 		flags = defaultLogFlags
 	}
@@ -97,16 +94,9 @@ func (s *Logger) SetFlags(flags int) *Logger {
 	return s
 }
 
-func (s *Logger) SetLevel(level Level) *Logger {
-	mutex.Lock()
-	defer mutex.Unlock()
+func (s *Logger) Level(level Level) *Logger {
 	s.level = level
 	return s
-}
-
-func (s *Logger) Level() (level Level) {
-	level = s.level
-	return
 }
 
 func (s *Logger) output(level Level, text string) {
