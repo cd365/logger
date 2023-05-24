@@ -45,8 +45,8 @@ type Logger struct {
 	error     *log.Logger
 	panic     *log.Logger
 	closer    []io.Closer
-	level     Level
-	callDepth int
+	Level     Level
+	CallDepth int
 }
 
 func New(writer io.Writer, flags int, level Level) *Logger {
@@ -60,8 +60,8 @@ func New(writer io.Writer, flags int, level Level) *Logger {
 		warn:      log.New(writer, tagWarn, flags),
 		error:     log.New(writer, tagError, flags),
 		panic:     log.New(writer, tagPanic, flags),
-		level:     level,
-		callDepth: 4,
+		Level:     level,
+		CallDepth: 4,
 	}
 	if c, ok := writer.(io.Closer); ok {
 		s.closer = append(s.closer, c)
@@ -77,11 +77,6 @@ func (s *Logger) Close() {
 	}
 }
 
-func (s *Logger) CallDepth(callDepth int) *Logger {
-	s.callDepth = callDepth
-	return s
-}
-
 func (s *Logger) Flags(flags int) *Logger {
 	if flags <= 0 {
 		flags = defaultLogFlags
@@ -94,39 +89,34 @@ func (s *Logger) Flags(flags int) *Logger {
 	return s
 }
 
-func (s *Logger) Level(level Level) *Logger {
-	s.level = level
-	return s
-}
-
 func (s *Logger) output(level Level, text string) {
 	mutex.Lock()
 	defer mutex.Unlock()
 	switch level {
 	case TRACE:
-		_ = s.trace.Output(s.callDepth, text)
+		_ = s.trace.Output(s.CallDepth, text)
 	case DEBUG:
-		_ = s.debug.Output(s.callDepth, text)
+		_ = s.debug.Output(s.CallDepth, text)
 	case INFO:
-		_ = s.info.Output(s.callDepth, text)
+		_ = s.info.Output(s.CallDepth, text)
 	case WARN:
-		_ = s.warn.Output(s.callDepth, text)
+		_ = s.warn.Output(s.CallDepth, text)
 	case ERROR:
-		_ = s.error.Output(s.callDepth, text)
+		_ = s.error.Output(s.CallDepth, text)
 	case PANIC:
-		_ = s.panic.Output(s.callDepth, text)
+		_ = s.panic.Output(s.CallDepth, text)
 		panic(text)
 	}
 }
 
 func (s *Logger) sprint(level Level, v ...interface{}) {
-	if level >= s.level {
+	if level >= s.Level {
 		s.output(level, fmt.Sprint(v...))
 	}
 }
 
 func (s *Logger) sprintf(level Level, format string, v ...interface{}) {
-	if level >= s.level {
+	if level >= s.Level {
 		s.output(level, fmt.Sprintf(format, v...))
 	}
 }
