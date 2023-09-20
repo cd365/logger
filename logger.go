@@ -33,19 +33,20 @@ const (
 	defaultLogFlags = log.Ldate | log.Lmicroseconds | log.Lshortfile
 )
 
-var (
-	mutex = &sync.Mutex{}
-)
-
 type Logger struct {
-	trace     *log.Logger
-	debug     *log.Logger
-	info      *log.Logger
-	warn      *log.Logger
-	error     *log.Logger
-	panic     *log.Logger
+	mutex  *sync.Mutex
+	writer io.Writer
+	Flags  int
+	Level  Level
+
+	trace *log.Logger
+	debug *log.Logger
+	info  *log.Logger
+	warn  *log.Logger
+	error *log.Logger
+	panic *log.Logger
+
 	closer    []io.Closer
-	Level     Level
 	CallDepth int
 }
 
@@ -54,13 +55,16 @@ func New(writer io.Writer, flags int, level Level) *Logger {
 		flags = defaultLogFlags
 	}
 	s := &Logger{
+		mutex:     &sync.Mutex{},
+		writer:    writer,
+		Flags:     flags,
+		Level:     level,
 		trace:     log.New(writer, tagTrace, flags),
 		debug:     log.New(writer, tagDebug, flags),
 		info:      log.New(writer, tagInfo, flags),
 		warn:      log.New(writer, tagWarn, flags),
 		error:     log.New(writer, tagError, flags),
 		panic:     log.New(writer, tagPanic, flags),
-		Level:     level,
 		CallDepth: 4,
 	}
 	if c, ok := writer.(io.Closer); ok {
@@ -70,14 +74,51 @@ func New(writer io.Writer, flags int, level Level) *Logger {
 }
 
 func (s *Logger) Close() {
-	mutex.Lock()
-	defer mutex.Unlock()
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
 	for _, c := range s.closer {
 		_ = c.Close()
 	}
 }
 
-func (s *Logger) Flags(flags int) *Logger {
+func (s *Logger) getLevelLogger(level Level) *log.Logger {
+	switch level {
+	case TRACE:
+		return s.trace
+	case DEBUG:
+		return s.debug
+	case INFO:
+		return s.info
+	case WARN:
+		return s.warn
+	case ERROR:
+		return s.error
+	case PANIC:
+		return s.panic
+	}
+	panic(fmt.Sprintf("unknown logger level: %d", level))
+}
+
+func (s *Logger) AddOutput(level Level, add ...io.Writer) *Logger {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	ws := []io.Writer{s.writer}
+	ws = append(ws, add...)
+	s.getLevelLogger(level).SetOutput(io.MultiWriter(ws...))
+	return s
+}
+
+func (s *Logger) SetOutput(level Level, set func(writer io.Writer) io.Writer) *Logger {
+	if set == nil {
+		return s
+	}
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	s.getLevelLogger(level).SetOutput(set(s.writer))
+	return s
+}
+
+func (s *Logger) SetFlags(flags int) *Logger {
 	if flags <= 0 {
 		flags = defaultLogFlags
 	}
@@ -90,8 +131,8 @@ func (s *Logger) Flags(flags int) *Logger {
 }
 
 func (s *Logger) output(level Level, text string) {
-	mutex.Lock()
-	defer mutex.Unlock()
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
 	switch level {
 	case TRACE:
 		_ = s.trace.Output(s.CallDepth, text)
