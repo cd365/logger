@@ -1,3 +1,3 @@
-module github.com/cd365/logger
+module github.com/cd365/logger/v2
 
-go 1.18
+go 1.21

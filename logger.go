@@ -1,211 +1,132 @@
 package logger
 
 import (
-	"fmt"
-	"io"
-	"log"
-	"sync"
+	"context"
+	"log/slog"
+	"os"
+	"runtime"
+	"time"
 )
 
-type Level int
-
-const (
-	ALL Level = iota
-	TRACE
-	DEBUG
-	INFO
-	WARN
-	ERROR
-	PANIC
-	OFF
-)
+type Level = slog.Level
 
 const (
-	tagTrace = "TRACE: "
-	tagDebug = "DEBUG: "
-	tagInfo  = "INFO : "
-	tagWarn  = "WARN : "
-	tagError = "ERROR: "
-	tagPanic = "PANIC: "
+	LevelAll   Level = -6
+	LevelTrace Level = -5
+	LevelDebug       = slog.LevelDebug
+	LevelInfo        = slog.LevelInfo
+	LevelWarn        = slog.LevelWarn
+	LevelError       = slog.LevelError
+	LevelFatal Level = 9
+	LevelOff   Level = 10
 )
 
-const (
-	defaultLogFlags = log.Ldate | log.Lmicroseconds | log.Lshortfile
-)
+var levelMap = map[Level]string{
+	LevelAll:   "ALL",
+	LevelTrace: "TRACE",
+	LevelDebug: "DEBUG",
+	LevelInfo:  "INFO",
+	LevelWarn:  "WARN",
+	LevelError: "ERROR",
+	LevelFatal: "FATAL",
+	LevelOff:   "OFF",
+}
 
 type Logger struct {
-	mutex  *sync.Mutex
-	writer io.Writer
-	Flags  int
-	Level  Level
+	// options Logger handler options
+	options *slog.HandlerOptions
 
-	trace *log.Logger
-	debug *log.Logger
-	info  *log.Logger
-	warn  *log.Logger
-	error *log.Logger
-	panic *log.Logger
+	// logger Log object
+	logger *slog.Logger
 
-	closer    []io.Closer
-	CallDepth int
+	// levelVar Dynamically adjust log level
+	levelVar *slog.LevelVar
 }
 
-func New(writer io.Writer, flags int, level Level) *Logger {
-	if flags <= 0 {
-		flags = defaultLogFlags
+func New(level Level) *Logger {
+	levelVar := slog.LevelVar{}
+	levelVar.Set(level)
+	options := &slog.HandlerOptions{
+		// With source
+		AddSource: true,
+		// Support dynamic setting of log level
+		Level: &levelVar,
+		// Modify the Attr key-value pair in the log (that is, the key/value attached to the log record)
+		ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
+			if a.Key == slog.LevelKey {
+				levelValue := a.Value.Any().(slog.Level)
+				levelLabel := levelValue.String()
+				switch levelValue {
+				case LevelTrace:
+					levelLabel = levelMap[levelValue]
+				case LevelFatal:
+					levelLabel = levelMap[levelValue]
+				}
+				a.Value = slog.StringValue(levelLabel)
+			}
+			return a
+		},
 	}
-	s := &Logger{
-		mutex:     &sync.Mutex{},
-		writer:    writer,
-		Flags:     flags,
-		Level:     level,
-		trace:     log.New(writer, tagTrace, flags),
-		debug:     log.New(writer, tagDebug, flags),
-		info:      log.New(writer, tagInfo, flags),
-		warn:      log.New(writer, tagWarn, flags),
-		error:     log.New(writer, tagError, flags),
-		panic:     log.New(writer, tagPanic, flags),
-		CallDepth: 4,
+	logger := slog.New(slog.NewTextHandler(os.Stdout, options))
+	return &Logger{
+		options:  options,
+		logger:   logger,
+		levelVar: &levelVar,
 	}
-	if c, ok := writer.(io.Closer); ok {
-		s.closer = append(s.closer, c)
-	}
+}
+
+func (s *Logger) GetOptions() *slog.HandlerOptions {
+	return s.options
+}
+
+func (s *Logger) SetHandler(handler slog.Handler) *Logger {
+	s.logger = slog.New(handler)
 	return s
 }
 
-func (s *Logger) Close() {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-	for _, c := range s.closer {
-		_ = c.Close()
-	}
-}
-
-func (s *Logger) getLevelLogger(level Level) *log.Logger {
-	switch level {
-	case TRACE:
-		return s.trace
-	case DEBUG:
-		return s.debug
-	case INFO:
-		return s.info
-	case WARN:
-		return s.warn
-	case ERROR:
-		return s.error
-	case PANIC:
-		return s.panic
-	}
-	panic(fmt.Sprintf("unknown logger level: %d", level))
-}
-
-func (s *Logger) AddOutput(level Level, add ...io.Writer) *Logger {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-	ws := []io.Writer{s.writer}
-	ws = append(ws, add...)
-	s.getLevelLogger(level).SetOutput(io.MultiWriter(ws...))
+func (s *Logger) SetLevel(level Level) *Logger {
+	s.levelVar.Set(level)
 	return s
 }
 
-func (s *Logger) SetOutput(level Level, set func(writer io.Writer) io.Writer) *Logger {
-	if set == nil {
-		return s
+func (s *Logger) log(ctx context.Context, level Level, msg string, args ...any) {
+	if !s.logger.Enabled(ctx, level) {
+		return
 	}
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-	s.getLevelLogger(level).SetOutput(set(s.writer))
-	return s
-}
-
-func (s *Logger) SetFlags(flags int) *Logger {
-	if flags <= 0 {
-		flags = defaultLogFlags
+	var pc uintptr
+	if s.options.AddSource {
+		var pcs [1]uintptr
+		runtime.Callers(3, pcs[:])
+		pc = pcs[0]
 	}
-	s.debug.SetFlags(flags)
-	s.info.SetFlags(flags)
-	s.warn.SetFlags(flags)
-	s.error.SetFlags(flags)
-	s.panic.SetFlags(flags)
-	return s
-}
-
-func (s *Logger) output(level Level, text string) {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-	switch level {
-	case TRACE:
-		_ = s.trace.Output(s.CallDepth, text)
-	case DEBUG:
-		_ = s.debug.Output(s.CallDepth, text)
-	case INFO:
-		_ = s.info.Output(s.CallDepth, text)
-	case WARN:
-		_ = s.warn.Output(s.CallDepth, text)
-	case ERROR:
-		_ = s.error.Output(s.CallDepth, text)
-	case PANIC:
-		_ = s.panic.Output(s.CallDepth, text)
-		panic(text)
+	r := slog.NewRecord(time.Now(), level, msg, pc)
+	r.Add(args...)
+	if ctx == nil {
+		ctx = context.Background()
 	}
+	_ = s.logger.Handler().Handle(ctx, r)
 }
 
-func (s *Logger) sprint(level Level, v ...interface{}) {
-	if level >= s.Level {
-		s.output(level, fmt.Sprint(v...))
-	}
+func (s *Logger) Trace(msg string, args ...any) {
+	s.log(context.Background(), LevelTrace, msg, args...)
 }
 
-func (s *Logger) sprintf(level Level, format string, v ...interface{}) {
-	if level >= s.Level {
-		s.output(level, fmt.Sprintf(format, v...))
-	}
+func (s *Logger) Debug(msg string, args ...any) {
+	s.log(context.Background(), LevelDebug, msg, args...)
 }
 
-func (s *Logger) Trace(v ...interface{}) {
-	s.sprint(TRACE, v...)
+func (s *Logger) Info(msg string, args ...any) {
+	s.log(context.Background(), LevelInfo, msg, args...)
 }
 
-func (s *Logger) Tracef(format string, v ...interface{}) {
-	s.sprintf(TRACE, format, v...)
+func (s *Logger) Warn(msg string, args ...any) {
+	s.log(context.Background(), LevelWarn, msg, args...)
 }
 
-func (s *Logger) Debug(v ...interface{}) {
-	s.sprint(DEBUG, v...)
+func (s *Logger) Error(msg string, args ...any) {
+	s.log(context.Background(), LevelError, msg, args...)
 }
 
-func (s *Logger) Debugf(format string, v ...interface{}) {
-	s.sprintf(DEBUG, format, v...)
-}
-
-func (s *Logger) Info(v ...interface{}) {
-	s.sprint(INFO, v...)
-}
-
-func (s *Logger) Infof(format string, v ...interface{}) {
-	s.sprintf(INFO, format, v...)
-}
-
-func (s *Logger) Warn(v ...interface{}) {
-	s.sprint(WARN, v...)
-}
-
-func (s *Logger) Warnf(format string, v ...interface{}) {
-	s.sprintf(WARN, format, v...)
-}
-
-func (s *Logger) Error(v ...interface{}) {
-	s.sprint(ERROR, v...)
-}
-
-func (s *Logger) Errorf(format string, v ...interface{}) {
-	s.sprintf(ERROR, format, v...)
-}
-
-func (s *Logger) Panic(v ...interface{}) {
-	s.sprint(PANIC, v...)
-}
-
-func (s *Logger) Panicf(format string, v ...interface{}) {
-	s.sprintf(PANIC, format, v...)
+func (s *Logger) Fatal(msg string, args ...any) {
+	s.log(context.Background(), LevelFatal, msg, args...)
 }
