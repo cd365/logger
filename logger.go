@@ -21,7 +21,7 @@ const (
 	LevelOff   Level = 10
 )
 
-var levelMap = map[Level]string{
+var LevelMap = map[Level]string{
 	LevelAll:   "ALL",
 	LevelTrace: "TRACE",
 	LevelDebug: "DEBUG",
@@ -32,6 +32,10 @@ var levelMap = map[Level]string{
 	LevelOff:   "OFF",
 }
 
+const (
+	LogDefaultSkip = 3
+)
+
 type Logger struct {
 	// HandlerOptions Log handler options.
 	HandlerOptions *slog.HandlerOptions
@@ -41,9 +45,12 @@ type Logger struct {
 
 	// LevelVar Dynamically adjust log level.
 	LevelVar *slog.LevelVar
+
+	// skip Number of stack frames to skip before recording.
+	skip int
 }
 
-func New(level Level) *Logger {
+func New(level Level, skip ...int) *Logger {
 	levelVar := slog.LevelVar{}
 	levelVar.Set(level)
 	handlerOptions := &slog.HandlerOptions{
@@ -60,9 +67,9 @@ func New(level Level) *Logger {
 				levelLabel := levelValue.String()
 				switch levelValue {
 				case LevelTrace:
-					levelLabel = levelMap[levelValue]
+					levelLabel = LevelMap[levelValue]
 				case LevelFatal:
-					levelLabel = levelMap[levelValue]
+					levelLabel = LevelMap[levelValue]
 				}
 				a.Value = slog.StringValue(levelLabel)
 			}
@@ -70,10 +77,18 @@ func New(level Level) *Logger {
 		},
 	}
 	logger := slog.New(slog.NewTextHandler(os.Stdout, handlerOptions))
+	skipValue := LogDefaultSkip
+	for i := len(skip) - 1; i >= 0; i-- {
+		if skip[i] > 0 {
+			skipValue = skip[i]
+			break
+		}
+	}
 	return &Logger{
 		HandlerOptions: handlerOptions,
 		Logger:         logger,
 		LevelVar:       &levelVar,
+		skip:           skipValue,
 	}
 }
 
@@ -84,7 +99,7 @@ func (s *Logger) log(ctx context.Context, level Level, msg string, args ...any) 
 	var pc uintptr
 	if s.HandlerOptions.AddSource {
 		var pcs [1]uintptr
-		runtime.Callers(3, pcs[:])
+		runtime.Callers(s.skip, pcs[:])
 		pc = pcs[0]
 	}
 	r := slog.NewRecord(time.Now(), level, msg, pc)
@@ -143,13 +158,9 @@ func (s *Logger) Fatal(msg string, args ...any) {
 	s.log(nil, LevelFatal, msg, args...)
 }
 
-var DefaultLogger *Logger
-
-func init() {
-	if DefaultLogger == nil {
-		DefaultLogger = New(LevelAll)
-	}
-}
+var (
+	DefaultLogger = New(LevelAll)
+)
 
 func TraceCtx(ctx context.Context, msg string, args ...any) {
 	DefaultLogger.log(ctx, LevelTrace, msg, args...)
