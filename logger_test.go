@@ -1,23 +1,17 @@
-# FOR EXAMPLE
-
-```go
-package main
+package logger
 
 import (
 	"fmt"
-	"github.com/cd365/logger/v8"
 	"github.com/rs/zerolog"
+	"testing"
 	"time"
 )
 
-func main() {
-
-	l := logger.NewLogger(nil)
+func TestNewLogger(t *testing.T) {
+	l := NewLogger(nil)
 
 	fmt.Println(l.GetLevel().String())
-
 	l.SetLevel(zerolog.DebugLevel)
-
 	fmt.Println(l.GetLevel().String())
 
 	l.CustomContext(func(ctx zerolog.Context) zerolog.Logger {
@@ -32,11 +26,10 @@ func main() {
 	l.CustomEvent(func(event *zerolog.Event, level zerolog.Level) *zerolog.Event {
 		return event.Int64("unix_milli", time.Now().UnixMilli())
 	})
-
 	// callers
 	l.CustomEvent(func(event *zerolog.Event, level zerolog.Level) *zerolog.Event {
 		if level > zerolog.InfoLevel {
-			callers := logger.CalledLists(logger.Callers(0))
+			callers := CalledLists(Callers(0))
 			fmt.Print(string(callers))
 			event.Bytes("callers", callers)
 		}
@@ -52,4 +45,3 @@ func main() {
 	l.Trace().Msg("000")
 
 }
-```

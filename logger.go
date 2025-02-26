@@ -1,211 +1,205 @@
 package logger
 
 import (
-	"context"
-	"log/slog"
+	"bytes"
+	"fmt"
+	"github.com/rs/zerolog"
+	"io"
 	"os"
 	"runtime"
-	"time"
-)
-
-type Level = slog.Level
-
-const (
-	LevelAll   Level = -6
-	LevelTrace Level = -5
-	LevelDebug       = slog.LevelDebug
-	LevelInfo        = slog.LevelInfo
-	LevelWarn        = slog.LevelWarn
-	LevelError       = slog.LevelError
-	LevelFatal Level = 9
-	LevelOff   Level = 10
-)
-
-var LevelMap = map[Level]string{
-	LevelAll:   "ALL",
-	LevelTrace: "TRACE",
-	LevelDebug: "DEBUG",
-	LevelInfo:  "INFO",
-	LevelWarn:  "WARN",
-	LevelError: "ERROR",
-	LevelFatal: "FATAL",
-	LevelOff:   "OFF",
-}
-
-const (
-	LogDefaultSkip = 3
 )
 
 type Logger struct {
-	// HandlerOptions Log handler options.
-	HandlerOptions *slog.HandlerOptions
+	logger *zerolog.Logger
 
-	// Logger Log object.
-	Logger *slog.Logger
-
-	// LevelVar Dynamically adjust log level.
-	LevelVar *slog.LevelVar
-
-	// skip Number of stack frames to skip before recording.
-	skip int
+	customEvent []func(event *zerolog.Event, level zerolog.Level) *zerolog.Event
 }
 
-func New(level Level, skip ...int) *Logger {
-	levelVar := slog.LevelVar{}
-	levelVar.Set(level)
-	handlerOptions := &slog.HandlerOptions{
-		// With source.
-		AddSource: true,
-
-		// Support dynamic setting of log level.
-		Level: &levelVar,
-
-		// Modify the Attr key-value pair in the log (that is, the key/value attached to the log record).
-		ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
-			if a.Key == slog.LevelKey {
-				levelValue := a.Value.Any().(slog.Level)
-				levelLabel := levelValue.String()
-				switch levelValue {
-				case LevelTrace:
-					levelLabel = LevelMap[levelValue]
-				case LevelFatal:
-					levelLabel = LevelMap[levelValue]
-				}
-				a.Value = slog.StringValue(levelLabel)
-			}
-			return a
-		},
+func NewLogger(writer io.Writer) *Logger {
+	if writer == nil {
+		writer = os.Stdout
 	}
-	logger := slog.New(slog.NewTextHandler(os.Stdout, handlerOptions))
-	skipValue := LogDefaultSkip
-	for i := len(skip) - 1; i >= 0; i-- {
-		if skip[i] > 0 {
-			skipValue = skip[i]
-			break
+	logger := zerolog.New(writer).With().Caller().Timestamp().Logger()
+	logger.Level(zerolog.TraceLevel)
+	return &Logger{
+		logger: &logger,
+	}
+}
+
+func (s *Logger) GetLevel() zerolog.Level {
+	return s.logger.GetLevel()
+}
+
+func (s *Logger) SetLevel(lvl zerolog.Level) *Logger {
+	logger := s.logger.Level(lvl)
+	s.logger = &logger
+	return s
+}
+
+// CustomContext Set common log properties.
+func (s *Logger) CustomContext(custom func(ctx zerolog.Context) zerolog.Logger) *Logger {
+	if custom != nil {
+		ctx := s.logger.With()
+		logger := custom(ctx)
+		s.logger = &logger
+	}
+	return s
+}
+
+// CustomEvent Set custom properties before calling output log.
+func (s *Logger) CustomEvent(customEvent func(event *zerolog.Event, level zerolog.Level) *zerolog.Event) *Logger {
+	if customEvent != nil {
+		s.customEvent = append(s.customEvent, customEvent)
+	}
+	return s
+}
+
+func (s *Logger) GetLogger() *zerolog.Logger {
+	return s.logger
+}
+
+func (s *Logger) SetLogger(logger *zerolog.Logger) *Logger {
+	s.logger = logger
+	return s
+}
+
+// SetOutput Duplicates the current logger and sets writer as its output.
+func (s *Logger) SetOutput(writer io.Writer) *Logger {
+	logger := s.logger.Output(writer)
+	s.logger = &logger
+	return s
+}
+
+func (s *Logger) Trace() *zerolog.Event {
+	tmp := s.logger.Trace()
+	for _, fc := range s.customEvent {
+		fc(tmp, zerolog.TraceLevel)
+	}
+	return tmp
+}
+
+func (s *Logger) Debug() *zerolog.Event {
+	tmp := s.logger.Debug()
+	for _, fc := range s.customEvent {
+		fc(tmp, zerolog.DebugLevel)
+	}
+	return tmp
+}
+
+func (s *Logger) Info() *zerolog.Event {
+	tmp := s.logger.Info()
+	for _, fc := range s.customEvent {
+		fc(tmp, zerolog.InfoLevel)
+	}
+	return tmp
+}
+
+func (s *Logger) Warn() *zerolog.Event {
+	tmp := s.logger.Warn()
+	for _, fc := range s.customEvent {
+		fc(tmp, zerolog.WarnLevel)
+	}
+	return tmp
+}
+
+func (s *Logger) Error() *zerolog.Event {
+	tmp := s.logger.Error()
+	for _, fc := range s.customEvent {
+		fc(tmp, zerolog.ErrorLevel)
+	}
+	return tmp
+}
+
+func (s *Logger) Fatal() *zerolog.Event {
+	tmp := s.logger.Fatal()
+	for _, fc := range s.customEvent {
+		fc(tmp, zerolog.FatalLevel)
+	}
+	return tmp
+}
+
+func (s *Logger) Panic() *zerolog.Event {
+	tmp := s.logger.Panic()
+	for _, fc := range s.customEvent {
+		fc(tmp, zerolog.PanicLevel)
+	}
+	return tmp
+}
+
+var defaultLogger = NewLogger(nil)
+
+func Default() *Logger {
+	return defaultLogger
+}
+
+func Trace() *zerolog.Event {
+	return defaultLogger.Trace()
+}
+
+func Debug() *zerolog.Event {
+	return defaultLogger.Debug()
+}
+
+func Info() *zerolog.Event {
+	return defaultLogger.Info()
+}
+
+func Warn() *zerolog.Event {
+	return defaultLogger.Warn()
+}
+
+func Error() *zerolog.Event {
+	return defaultLogger.Error()
+}
+
+func Fatal() *zerolog.Event {
+	return defaultLogger.Fatal()
+}
+
+func Panic() *zerolog.Event {
+	return defaultLogger.Panic()
+}
+
+type Called struct {
+	Index int // call index
+
+	Func string // call func
+
+	File string // call file
+
+	FileLine int // call line in the file
+}
+
+// Callers Get called lists.
+func Callers(skip int) []*Called {
+	pcs := make([]uintptr, 1<<8)
+	n := runtime.Callers(skip, pcs)
+	pcs = pcs[:n]
+	result := make([]*Called, 0, n)
+	for i, pc := range pcs {
+		fc := runtime.FuncForPC(pc)
+		if fc == nil {
+			continue
+		}
+		file, line := fc.FileLine(pc)
+		caller := &Called{
+			Index:    i,
+			Func:     fc.Name(),
+			File:     file,
+			FileLine: line,
+		}
+		result = append(result, caller)
+	}
+	return result
+}
+
+// CalledLists Called lists.
+func CalledLists(calledLists []*Called) []byte {
+	buffer := bytes.NewBuffer(nil)
+	for _, called := range calledLists {
+		if called != nil {
+			buffer.WriteString(fmt.Sprintf("%d %s %s:%d\n", called.Index, called.Func, called.File, called.FileLine))
 		}
 	}
-	return &Logger{
-		HandlerOptions: handlerOptions,
-		Logger:         logger,
-		LevelVar:       &levelVar,
-		skip:           skipValue,
-	}
-}
-
-func (s *Logger) log(ctx context.Context, level Level, msg string, args ...any) {
-	if !s.Logger.Enabled(ctx, level) {
-		return
-	}
-	var pc uintptr
-	if s.HandlerOptions.AddSource {
-		var pcs [1]uintptr
-		runtime.Callers(s.skip, pcs[:])
-		pc = pcs[0]
-	}
-	r := slog.NewRecord(time.Now(), level, msg, pc)
-	r.Add(args...)
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	_ = s.Logger.Handler().Handle(ctx, r)
-}
-
-func (s *Logger) TraceCtx(ctx context.Context, msg string, args ...any) {
-	s.log(ctx, LevelTrace, msg, args...)
-}
-
-func (s *Logger) DebugCtx(ctx context.Context, msg string, args ...any) {
-	s.log(ctx, LevelDebug, msg, args...)
-}
-
-func (s *Logger) InfoCtx(ctx context.Context, msg string, args ...any) {
-	s.log(ctx, LevelInfo, msg, args...)
-}
-
-func (s *Logger) WarnCtx(ctx context.Context, msg string, args ...any) {
-	s.log(ctx, LevelWarn, msg, args...)
-}
-
-func (s *Logger) ErrorCtx(ctx context.Context, msg string, args ...any) {
-	s.log(ctx, LevelError, msg, args...)
-}
-
-func (s *Logger) FatalCtx(ctx context.Context, msg string, args ...any) {
-	s.log(ctx, LevelFatal, msg, args...)
-}
-
-func (s *Logger) Trace(msg string, args ...any) {
-	s.log(nil, LevelTrace, msg, args...)
-}
-
-func (s *Logger) Debug(msg string, args ...any) {
-	s.log(nil, LevelDebug, msg, args...)
-}
-
-func (s *Logger) Info(msg string, args ...any) {
-	s.log(nil, LevelInfo, msg, args...)
-}
-
-func (s *Logger) Warn(msg string, args ...any) {
-	s.log(nil, LevelWarn, msg, args...)
-}
-
-func (s *Logger) Error(msg string, args ...any) {
-	s.log(nil, LevelError, msg, args...)
-}
-
-func (s *Logger) Fatal(msg string, args ...any) {
-	s.log(nil, LevelFatal, msg, args...)
-}
-
-var (
-	DefaultLogger = New(LevelAll)
-)
-
-func TraceCtx(ctx context.Context, msg string, args ...any) {
-	DefaultLogger.log(ctx, LevelTrace, msg, args...)
-}
-
-func DebugCtx(ctx context.Context, msg string, args ...any) {
-	DefaultLogger.log(ctx, LevelDebug, msg, args...)
-}
-
-func InfoCtx(ctx context.Context, msg string, args ...any) {
-	DefaultLogger.log(ctx, LevelInfo, msg, args...)
-}
-
-func WarnCtx(ctx context.Context, msg string, args ...any) {
-	DefaultLogger.log(ctx, LevelWarn, msg, args...)
-}
-
-func ErrorCtx(ctx context.Context, msg string, args ...any) {
-	DefaultLogger.log(ctx, LevelError, msg, args...)
-}
-
-func FatalCtx(ctx context.Context, msg string, args ...any) {
-	DefaultLogger.log(ctx, LevelFatal, msg, args...)
-}
-
-func Trace(msg string, args ...any) {
-	DefaultLogger.log(nil, LevelTrace, msg, args...)
-}
-
-func Debug(msg string, args ...any) {
-	DefaultLogger.log(nil, LevelDebug, msg, args...)
-}
-
-func Info(msg string, args ...any) {
-	DefaultLogger.log(nil, LevelInfo, msg, args...)
-}
-
-func Warn(msg string, args ...any) {
-	DefaultLogger.log(nil, LevelWarn, msg, args...)
-}
-
-func Error(msg string, args ...any) {
-	DefaultLogger.log(nil, LevelError, msg, args...)
-}
-
-func Fatal(msg string, args ...any) {
-	DefaultLogger.log(nil, LevelFatal, msg, args...)
+	return buffer.Bytes()
 }
