@@ -1,11 +1,31 @@
 package logger
 
 import (
+	"errors"
 	"fmt"
 	"github.com/rs/zerolog"
+	"runtime"
+	"strings"
 	"testing"
 	"time"
 )
+
+func callerString(frames *runtime.Frames) string {
+	b := &strings.Builder{}
+	index := 0
+	for {
+		frame, more := frames.Next()
+		if !more {
+			break
+		}
+		if index > 0 {
+			b.WriteString("\n")
+		}
+		b.WriteString(fmt.Sprintf("%d %s %s:%d", index, frame.Function, frame.File, frame.Line))
+		index++
+	}
+	return b.String()
+}
 
 func TestNewLogger(t *testing.T) {
 	l := NewLogger(nil)
@@ -29,9 +49,9 @@ func TestNewLogger(t *testing.T) {
 	// callers
 	l.CustomEvent(func(event *zerolog.Event, level zerolog.Level) *zerolog.Event {
 		if level > zerolog.InfoLevel {
-			callers := CalledLists(Callers(0))
-			fmt.Print(string(callers))
-			event.Bytes("callers", callers)
+			callsString := callerString(Callers(1))
+			fmt.Println(callsString)
+			event.Str("callers", callsString)
 		}
 		return event
 	})
@@ -40,7 +60,7 @@ func TestNewLogger(t *testing.T) {
 
 	<-time.After(time.Second * 2)
 
-	l.Error().Err(fmt.Errorf("321")).Send()
+	l.Error().Err(errors.New("321")).Send()
 
 	l.Trace().Msg("000")
 

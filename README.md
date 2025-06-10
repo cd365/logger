@@ -4,11 +4,31 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"github.com/cd365/logger/v8"
 	"github.com/rs/zerolog"
+	"runtime"
+	"strings"
 	"time"
 )
+
+func callerString(frames *runtime.Frames) string {
+	b := &strings.Builder{}
+	index := 0
+	for {
+		frame, more := frames.Next()
+		if !more {
+			break
+		}
+		if index > 0 {
+			b.WriteString("\n")
+		}
+		b.WriteString(fmt.Sprintf("%d %s %s:%d", index, frame.Function, frame.File, frame.Line))
+		index++
+	}
+	return b.String()
+}
 
 func main() {
 
@@ -36,9 +56,9 @@ func main() {
 	// callers
 	l.CustomEvent(func(event *zerolog.Event, level zerolog.Level) *zerolog.Event {
 		if level > zerolog.InfoLevel {
-			callers := logger.CalledLists(logger.Callers(0))
-			fmt.Print(string(callers))
-			event.Bytes("callers", callers)
+			callsString := callerString(logger.Callers(1))
+			fmt.Println(callsString)
+			event.Str("callers", callsString)
 		}
 		return event
 	})
@@ -47,7 +67,7 @@ func main() {
 
 	<-time.After(time.Second * 2)
 
-	l.Error().Err(fmt.Errorf("321")).Send()
+	l.Error().Err(errors.New("321")).Send()
 
 	l.Trace().Msg("000")
 

@@ -1,8 +1,6 @@
 package logger
 
 import (
-	"bytes"
-	"fmt"
 	"github.com/rs/zerolog"
 	"io"
 	"os"
@@ -160,46 +158,16 @@ func Panic() *zerolog.Event {
 	return defaultLogger.Panic()
 }
 
-type Called struct {
-	Index int // call index
-
-	Func string // call func
-
-	File string // call file
-
-	FileLine int // call line in the file
-}
-
 // Callers Get called lists.
-func Callers(skip int) []*Called {
-	pcs := make([]uintptr, 1<<8)
-	n := runtime.Callers(skip, pcs)
-	pcs = pcs[:n]
-	result := make([]*Called, 0, n)
-	for i, pc := range pcs {
-		fc := runtime.FuncForPC(pc)
-		if fc == nil {
-			continue
+func Callers(skip int) *runtime.Frames {
+	pc := make([]uintptr, 1<<5)
+	for {
+		n := runtime.Callers(skip, pc)
+		if n < len(pc) {
+			pc = pc[:n]
+			break
 		}
-		file, line := fc.FileLine(pc)
-		caller := &Called{
-			Index:    i,
-			Func:     fc.Name(),
-			File:     file,
-			FileLine: line,
-		}
-		result = append(result, caller)
+		pc = make([]uintptr, 2*len(pc))
 	}
-	return result
-}
-
-// CalledLists Called lists.
-func CalledLists(calledLists []*Called) []byte {
-	buffer := bytes.NewBuffer(nil)
-	for _, called := range calledLists {
-		if called != nil {
-			buffer.WriteString(fmt.Sprintf("%d %s %s:%d\n", called.Index, called.Func, called.File, called.FileLine))
-		}
-	}
-	return buffer.Bytes()
+	return runtime.CallersFrames(pc)
 }
