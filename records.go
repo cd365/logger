@@ -1,26 +1,15 @@
 package logger
 
-import (
-	"github.com/rs/zerolog"
-)
-
 type Records struct {
 	log      *Logger
-	fc       func(event *zerolog.Event)
 	tagName  string
 	dataName string
 }
 
 type Record struct {
+	data    map[string]any
+	event   *Event
 	records *Records
-	event   *zerolog.Event
-	data    map[string]interface{}
-}
-
-// Func Public custom processing Event.
-func (s *Records) Func(fc func(event *zerolog.Event)) *Records {
-	s.fc = fc
-	return s
 }
 
 func (s *Records) SetTagName(tagName string) *Records {
@@ -33,100 +22,100 @@ func (s *Records) SetDataName(dataName string) *Records {
 	return s
 }
 
-func (s *Records) Trace() *Record {
+func (s *Records) Trace(events ...func(event *Event)) *Record {
 	record := &Record{
-		records: s,
 		event:   s.log.Trace(),
+		records: s,
 	}
-	if s.fc != nil {
-		record.event.Func(s.fc)
+	for _, f := range events {
+		f(record.event)
 	}
 	return record
 }
 
-func (s *Records) Debug() *Record {
+func (s *Records) Debug(events ...func(event *Event)) *Record {
 	record := &Record{
-		records: s,
 		event:   s.log.Debug(),
+		records: s,
 	}
-	if s.fc != nil {
-		record.event.Func(s.fc)
+	for _, f := range events {
+		f(record.event)
 	}
 	return record
 }
 
-func (s *Records) Info() *Record {
+func (s *Records) Info(events ...func(event *Event)) *Record {
 	record := &Record{
-		records: s,
 		event:   s.log.Info(),
+		records: s,
 	}
-	if s.fc != nil {
-		record.event.Func(s.fc)
+	for _, f := range events {
+		f(record.event)
 	}
 	return record
 }
 
-func (s *Records) Warn() *Record {
+func (s *Records) Warn(events ...func(event *Event)) *Record {
 	record := &Record{
-		records: s,
 		event:   s.log.Warn(),
+		records: s,
 	}
-	if s.fc != nil {
-		record.event.Func(s.fc)
+	for _, f := range events {
+		f(record.event)
 	}
 	return record
 }
 
-func (s *Records) Error() *Record {
+func (s *Records) Error(events ...func(event *Event)) *Record {
 	record := &Record{
-		records: s,
 		event:   s.log.Error(),
+		records: s,
 	}
-	if s.fc != nil {
-		record.event.Func(s.fc)
+	for _, f := range events {
+		f(record.event)
 	}
 	return record
 }
 
-func (s *Records) Fatal() *Record {
+func (s *Records) Fatal(events ...func(event *Event)) *Record {
 	record := &Record{
-		records: s,
 		event:   s.log.Fatal(),
-	}
-	if s.fc != nil {
-		record.event.Func(s.fc)
-	}
-	return record
-}
-
-func (s *Records) Panic() *Record {
-	record := &Record{
 		records: s,
-		event:   s.log.Panic(),
 	}
-	if s.fc != nil {
-		record.event.Func(s.fc)
+	for _, f := range events {
+		f(record.event)
 	}
 	return record
 }
 
-// Func Add custom key-value pairs to the log object.
-func (s *Record) Func(fc func(event *zerolog.Event)) *Record {
-	if fc != nil {
-		fc(s.event)
+func (s *Records) Panic(events ...func(event *Event)) *Record {
+	record := &Record{
+		event:   s.log.Panic(),
+		records: s,
+	}
+	for _, f := range events {
+		f(record.event)
+	}
+	return record
+}
+
+// Event Handling custom logic.
+func (s *Record) Event(f func(event *Event)) *Record {
+	if f != nil {
+		f(s.event)
 	}
 	return s
 }
 
 func (s *Record) Tag(tag string) *Record {
-	return s.Func(func(event *zerolog.Event) { event.Str(s.records.tagName, tag) })
+	return s.Event(func(event *Event) { event.Str(s.records.tagName, tag) })
 }
 
 // Set The Set method should be called before the Msg or Err method.
 // Make sure the `value` parameter value can be serialized to json.
-func (s *Record) Set(key string, value interface{}) *Record {
+func (s *Record) Set(key string, value any) *Record {
 	if s.data == nil {
-		s.data = make(map[string]interface{}, 1<<3)
+		s.data = make(map[string]any, 1<<3)
 	}
 	if key != "" {
 		s.data[key] = value
@@ -134,7 +123,7 @@ func (s *Record) Set(key string, value interface{}) *Record {
 	return s
 }
 
-func (s *Record) log() *zerolog.Event {
+func (s *Record) log() *Event {
 	tmp := s.event
 	if s.data != nil {
 		tmp.Any(s.records.dataName, s.data)
@@ -151,9 +140,9 @@ func (s *Record) Err(err error) {
 }
 
 func NewRecords(log *Logger) *Records {
+	log.AddEvent(func(event *Event) { event.CallerSkipFrame(1) })
 	return &Records{
 		log:      log,
-		fc:       func(event *zerolog.Event) { event.CallerSkipFrame(1) },
 		tagName:  "tag",
 		dataName: "data",
 	}
