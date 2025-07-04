@@ -1,6 +1,7 @@
 package logger
 
 import (
+	"fmt"
 	"github.com/rs/zerolog"
 	"io"
 	"os"
@@ -219,6 +220,14 @@ func (s *Event) Durations(key string, v []time.Duration) *Event {
 	return s
 }
 
+func (s *Event) Title(title string) *Event {
+	return s.Str("title", title)
+}
+
+func (s *Event) Data(data any) *Event {
+	return s.Any("data", data)
+}
+
 func (s *Event) Err(err error) {
 	if err != nil {
 		s.event.Msg(err.Error())
@@ -427,4 +436,26 @@ func Callers(skip int) *runtime.Frames {
 		pc = make([]uintptr, 2*len(pc))
 	}
 	return runtime.CallersFrames(pc)
+}
+
+// ParseLevel Parse logger level.
+func ParseLevel(level string) (Level, error) {
+	switch level {
+	case "TRACE", "trace":
+		return TraceLevel, nil
+	case "DEBUG", "debug":
+		return DebugLevel, nil
+	case "INFO", "info":
+		return InfoLevel, nil
+	case "WARN", "warn":
+		return WarnLevel, nil
+	case "ERROR", "error":
+		return ErrorLevel, nil
+	case "FATAL", "fatal":
+		return FatalLevel, nil
+	case "PANIC", "panic":
+		return PanicLevel, nil
+	default:
+		return NoLevel, fmt.Errorf("invalid level: %s", level)
+	}
 }
