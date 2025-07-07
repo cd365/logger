@@ -140,7 +140,9 @@ func (s *Record) Err(err error) {
 }
 
 func NewRecords(log *Logger) *Records {
-	log.AddEvent(func(event *Event) { event.CallerSkipFrame(1) })
+	log.AddEvent(func(event *Event) {
+		event.CallerSkipFrame(1)
+	})
 	return &Records{
 		log:      log,
 		tagName:  "tag",

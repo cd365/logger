@@ -1,6 +1,7 @@
 package logger
 
 import (
+	"encoding/json"
 	"fmt"
 	"github.com/rs/zerolog"
 	"io"
@@ -458,4 +459,58 @@ func ParseLevel(level string) (Level, error) {
 	default:
 		return NoLevel, fmt.Errorf("invalid level: %s", level)
 	}
+}
+
+// Parser Parsing log data.
+type Parser interface {
+	// GetTime Get the log time from the log data.
+	GetTime(b []byte) string
+
+	// GetLevel Get the log level from the log data.
+	GetLevel(b []byte) (Level, error)
+
+	// GetCaller Get the log call from the log data.
+	GetCaller(b []byte) string
+}
+
+type parseTime struct {
+	Time string `json:"time"`
+}
+
+type parseLevel struct {
+	Level string `json:"level"`
+}
+
+type parseCaller struct {
+	Caller string `json:"caller"`
+}
+
+type parser struct{}
+
+func (s *parser) GetTime(b []byte) string {
+	tmp := &parseTime{}
+	if err := json.Unmarshal(b, tmp); err != nil {
+		return ""
+	}
+	return tmp.Time
+}
+
+func (s *parser) GetLevel(b []byte) (Level, error) {
+	tmp := &parseLevel{}
+	if err := json.Unmarshal(b, tmp); err != nil {
+		return Disabled, err
+	}
+	level, err := ParseLevel(tmp.Level)
+	if err != nil {
+		return Disabled, err
+	}
+	return level, nil
+}
+
+func (s *parser) GetCaller(b []byte) string {
+	tmp := &parseCaller{}
+	if err := json.Unmarshal(b, tmp); err != nil {
+		return ""
+	}
+	return tmp.Caller
 }

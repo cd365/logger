@@ -2,7 +2,6 @@ package logger
 
 import (
 	"fmt"
-	"github.com/tidwall/gjson"
 	"io"
 	"os"
 	"time"
@@ -26,14 +25,6 @@ const (
 	ctrlWhite   = "\x1b[37m"
 )
 
-func takeOutLevel(b []byte) (Level, error) {
-	return ParseLevel(gjson.GetBytes(b, "level").String())
-}
-
-func takeOutCaller(b []byte) string {
-	return gjson.GetBytes(b, "caller").String()
-}
-
 // Limiter Temporarily save the output log.
 type Limiter interface {
 	// Exists Check if a certain data exists.
@@ -48,8 +39,7 @@ type CallLimit struct {
 	// duration Log frequency limit period.
 	duration time.Duration
 
-	// level The minimum level for limiting the frequency of log output.
-	// default: TraceLevel, that is, all log levels limit the frequency
+	// level The minimum level for limiting the frequency of log output. default: TraceLevel, that is, all log levels limit the frequency.
 	level Level
 
 	// limiter Current Limiter.
@@ -57,6 +47,9 @@ type CallLimit struct {
 
 	// writer The final output channel of the log.
 	writer io.Writer
+
+	// parser Parsing log data.
+	parser Parser
 }
 
 func (s *CallLimit) GetLevel() Level {
@@ -68,15 +61,22 @@ func (s *CallLimit) SetLevel(level Level) *CallLimit {
 	return s
 }
 
+func (s *CallLimit) SetParser(parser Parser) *CallLimit {
+	if parser != nil {
+		s.parser = parser
+	}
+	return s
+}
+
 func (s *CallLimit) Write(content []byte) (int, error) {
-	level, err := takeOutLevel(content)
+	level, err := s.parser.GetLevel(content)
 	if err != nil {
 		return 0, err
 	}
 	if level < s.level {
 		return s.writer.Write(content)
 	}
-	caller := takeOutCaller(content)
+	caller := s.parser.GetCaller(content)
 	exists, err := s.limiter.Exists(caller)
 	if err != nil {
 		return 0, err
@@ -111,6 +111,7 @@ func NewCallLimit(duration time.Duration, limiter Limiter, writer io.Writer) *Ca
 		level:    TraceLevel,
 		limiter:  limiter,
 		writer:   writer,
+		parser:   &parser{},
 	}
 }
 
@@ -147,6 +148,9 @@ type LevelColor struct {
 
 	// writer The final output channel of the log, usually the terminal.
 	writer io.Writer
+
+	// parser Parsing log data.
+	parser Parser
 }
 
 func (s *LevelColor) GetLevel() Level {
@@ -158,8 +162,15 @@ func (s *LevelColor) SetLevel(level Level) *LevelColor {
 	return s
 }
 
+func (s *LevelColor) SetParser(parser Parser) *LevelColor {
+	if parser != nil {
+		s.parser = parser
+	}
+	return s
+}
+
 func (s *LevelColor) Write(content []byte) (int, error) {
-	level, err := takeOutLevel(content)
+	level, err := s.parser.GetLevel(content)
 	if err != nil {
 		return 0, err
 	}
@@ -176,5 +187,6 @@ func NewLevelColor(writer io.Writer) *LevelColor {
 	return &LevelColor{
 		level:  TraceLevel,
 		writer: writer,
+		parser: &parser{},
 	}
 }

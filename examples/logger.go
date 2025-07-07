@@ -46,7 +46,7 @@ func tryLogger() {
 	l.AddEvent(func(event *logger.Event) {
 
 		// // The value displays log information at warning level and above
-		// if event.Level() <= InfoLevel {
+		// if event.Level() <= logger.InfoLevel {
 		// 	event.Discard()
 		// 	return
 		// }
