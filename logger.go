@@ -3,11 +3,12 @@ package logger
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/rs/zerolog"
 	"io"
 	"os"
 	"runtime"
 	"time"
+
+	"github.com/rs/zerolog"
 )
 
 type Level int8
@@ -237,6 +238,10 @@ func (s *Event) Err(err error) {
 
 func (s *Event) Msg(msg string) {
 	s.event.Msg(msg)
+}
+
+func (s *Event) Printf(format string, a ...any) {
+	s.event.Msg(fmt.Sprintf(format, a...))
 }
 
 type Logger struct {

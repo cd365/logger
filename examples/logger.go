@@ -3,11 +3,12 @@ package main
 import (
 	"errors"
 	"fmt"
-	"github.com/cd365/logger/v9"
-	"github.com/rs/zerolog"
 	"runtime"
 	"strings"
 	"time"
+
+	"github.com/cd365/logger/v9"
+	"github.com/rs/zerolog"
 )
 
 func loggerCallerString(frames *runtime.Frames) string {
@@ -44,7 +45,6 @@ func tryLogger() {
 
 	// Note the difference in the `unix_milli` values in the two log outputs
 	l.AddEvent(func(event *logger.Event) {
-
 		// // The value displays log information at warning level and above
 		// if event.Level() <= logger.InfoLevel {
 		// 	event.Discard()
@@ -56,7 +56,6 @@ func tryLogger() {
 		// Get stack information.
 		callsString := loggerCallerString(logger.Callers(0))
 		event.Str("stack", callsString)
-
 	})
 
 	l.Info().Msg("123")
